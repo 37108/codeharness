@@ -50,10 +50,11 @@ async function main(): Promise<void> {
   )
 
   // --- Resolve API key based on provider ---
-  // Copilot provider uses GITHUB_TOKEN to authenticate with GitHub Models API
+  // Copilot: uses COPILOT_TOKEN (PAT with Models permission) for GitHub Models API
+  // Claude: uses ANTHROPIC_API_KEY
   const apiKey =
     config.provider === 'copilot'
-      ? githubToken
+      ? requireEnv('COPILOT_TOKEN')
       : requireEnv('ANTHROPIC_API_KEY')
 
   // --- Load review guide and CLAUDE.md ---

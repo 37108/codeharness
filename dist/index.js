@@ -26913,7 +26913,7 @@ async function main() {
   console.log(
     `Config: provider=${config.provider}, model=${config.model}, language=${config.language}, auto_approve=${config.autoApprove}`
   );
-  const apiKey = config.provider === "copilot" ? githubToken : requireEnv("ANTHROPIC_API_KEY");
+  const apiKey = config.provider === "copilot" ? requireEnv("COPILOT_TOKEN") : requireEnv("ANTHROPIC_API_KEY");
   const reviewGuide = loadFileIfExists(workspace, config.reviewGuidePath);
   const claudeMd = loadFileIfExists(workspace, "CLAUDE.md");
   if (reviewGuide) console.log(`Loaded review guide from ${config.reviewGuidePath}`);

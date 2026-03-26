@@ -8,8 +8,11 @@ inputs:
   anthropic_api_key:
     description: 'Anthropic API key (required when provider is "claude")'
     required: false
+  copilot_token:
+    description: 'PAT with Models permission for Copilot provider (required when provider is "copilot")'
+    required: false
   github_token:
-    description: 'GitHub token with PR read/write permissions. Also used as API key for Copilot provider.'
+    description: 'GitHub token for PR operations (comments, labels, reviews)'
     required: true
     default: ${{ github.token }}
   provider:
@@ -54,6 +57,7 @@ runs:
       working-directory: ${{ github.workspace }}
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        COPILOT_TOKEN: ${{ inputs.copilot_token }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
