@@ -50,13 +50,13 @@ jobs:
 
       - uses: 37108/codeharness@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### 2. Add your API key
 
-Go to your repository **Settings → Secrets and variables → Actions** and add `ANTHROPIC_API_KEY`.
+Go to your repository **Settings → Secrets and variables → Actions** and add your Anthropic API key as a secret (e.g., `CLAUDE_API_KEY`).
 
 ### 3. Open a pull request
 
@@ -111,8 +111,8 @@ The AI **never** decides to approve or reject. Instead, deterministic rules are 
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `anthropic_api_key` | — | Anthropic API key (required for `claude` provider) |
-| `openai_api_key` | — | OpenAI / GitHub Models API key (required for `copilot` provider) |
+| `claude_api_key` | — | API key for Claude provider (Anthropic API key) |
+| `copilot_api_key` | — | API key for Copilot provider (OpenAI / GitHub Models API key) |
 | `github_token` | `github.token` | GitHub token with PR read/write access |
 | `provider` | `claude` | AI provider: `claude` or `copilot` |
 | `model` | `claude-sonnet-4-20250514` | Model name |
@@ -199,7 +199,7 @@ Custom skills override built-in skills with the same name.
 ```yaml
 - uses: 37108/codeharness@v1
   with:
-    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
     provider: claude
     model: claude-sonnet-4-20250514
 ```
@@ -209,7 +209,7 @@ Custom skills override built-in skills with the same name.
 ```yaml
 - uses: 37108/codeharness@v1
   with:
-    openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+    copilot_api_key: ${{ secrets.OPENAI_API_KEY }}
     provider: copilot
     model: gpt-4o
 ```

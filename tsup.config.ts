@@ -11,4 +11,8 @@ export default defineConfig({
   // Bundle all local imports into a single file for fast GitHub Action startup
   noExternal: [/(.*)/],
   external: [],
+  // Shim require() for CJS dependencies (e.g., yaml) bundled into ESM
+  banner: {
+    js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+  },
 })
