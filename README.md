@@ -48,7 +48,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: your-org/codeharness@v1
+      - uses: 37108/codeharness@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -197,7 +197,7 @@ Custom skills override built-in skills with the same name.
 ### Claude (default)
 
 ```yaml
-- uses: your-org/codeharness@v1
+- uses: 37108/codeharness@v1
   with:
     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
     provider: claude
@@ -207,7 +207,7 @@ Custom skills override built-in skills with the same name.
 ### GitHub Copilot / OpenAI
 
 ```yaml
-- uses: your-org/codeharness@v1
+- uses: 37108/codeharness@v1
   with:
     openai_api_key: ${{ secrets.OPENAI_API_KEY }}
     provider: copilot

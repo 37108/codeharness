@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: CodeHarness Review
-        uses: your-org/codeharness@v1
+        uses: 37108/codeharness@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -46,7 +46,7 @@ jobs:
   # ai-review-copilot:
   #   ...
   #   steps:
-  #     - uses: your-org/codeharness@v1
+  #     - uses: 37108/codeharness@v1
   #       with:
   #         openai_api_key: ${{ secrets.OPENAI_API_KEY }}
   #         github_token: ${{ secrets.GITHUB_TOKEN }}
