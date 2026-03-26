@@ -1,21 +1,32 @@
 name: 'CodeHarness AI Review'
-description: 'Multi-phase AI code review using Claude API with harness engineering principles'
+description: 'Multi-phase AI code review with harness engineering principles. Supports Claude and GitHub Copilot.'
 branding:
   icon: 'eye'
   color: 'purple'
 
 inputs:
   anthropic_api_key:
-    description: 'Anthropic API key'
-    required: true
+    description: 'Anthropic API key (required when provider is "claude")'
+    required: false
+  openai_api_key:
+    description: 'OpenAI / GitHub Models API key (required when provider is "copilot")'
+    required: false
   github_token:
     description: 'GitHub token with PR read/write permissions'
     required: true
     default: ${{ github.token }}
+  provider:
+    description: 'AI provider: "claude" or "copilot"'
+    required: false
+    default: 'claude'
   model:
-    description: 'Claude model to use for review'
+    description: 'Model to use (e.g., claude-sonnet-4-20250514 or gpt-4o)'
     required: false
     default: 'claude-sonnet-4-20250514'
+  language:
+    description: 'Review output language (e.g., "en", "ja", "ko", "zh")'
+    required: false
+    default: 'en'
   auto_approve:
     description: 'Automatically approve PRs with no significant findings'
     required: false
@@ -41,23 +52,21 @@ runs:
       with:
         node-version: '22'
 
-    - name: Install dependencies
+    - name: Install and build
       shell: bash
       working-directory: ${{ github.action_path }}
-      run: npm ci --ignore-scripts
-
-    - name: Build
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: npx tsc
+      run: npm ci --ignore-scripts && npx tsup
 
     - name: Run CodeHarness Review
       shell: bash
       working-directory: ${{ github.workspace }}
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}
+        INPUT_LANGUAGE: ${{ inputs.language }}
         INPUT_AUTO_APPROVE: ${{ inputs.auto_approve }}
         INPUT_REVIEW_GUIDE_PATH: ${{ inputs.review_guide_path }}
         INPUT_CONFIG_PATH: ${{ inputs.config_path }}

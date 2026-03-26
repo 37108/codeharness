@@ -1,9 +1,5 @@
-import type {
-  Finding,
-  ReviewConfig,
-  PullRequestInfo,
-} from '../types.js'
 import type { DiffSummary } from '../diff.js'
+import type { Finding, PullRequestInfo, ReviewConfig } from '../types.js'
 
 export interface TriagePromptContext {
   config: ReviewConfig
@@ -19,7 +15,18 @@ export interface TriagePromptContext {
  * The triage phase re-evaluates raw findings with a fresh perspective,
  * performs intent analysis, and detects breaking changes.
  */
-export function buildTriageSystemPrompt(): string {
+const TRIAGE_LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  ja: `\n## 出力言語\nreview_comment, summary, intent_analysis の全テキストフィールドは**日本語**で記述してください。\nJSON のキー名は英語のままにしてください。`,
+  en: '',
+  ko: `\n## Output Language\nWrite review_comment, summary, and intent_analysis text fields in **Korean**.\nKeep JSON key names in English.`,
+  zh: `\n## Output Language\nWrite review_comment, summary, and intent_analysis text fields in **Chinese**.\nKeep JSON key names in English.`,
+}
+
+export function buildTriageSystemPrompt(language: string = 'en'): string {
+  const langInstruction =
+    TRIAGE_LANGUAGE_INSTRUCTIONS[language] ??
+    TRIAGE_LANGUAGE_INSTRUCTIONS[language.split('-')[0] ?? 'en'] ??
+    ''
   return `You are the Triage Agent for CodeHarness.
 You receive raw findings from the Review phase and must:
 
@@ -127,7 +134,7 @@ Use this exact format:
 [List or "None detected"]
 
 ---
-<sub>Reviewed by CodeHarness v1.0.0</sub>`
+<sub>Reviewed by CodeHarness v1.0.0</sub>${langInstruction}`
 }
 
 /**

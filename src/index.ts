@@ -1,22 +1,20 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { ReviewOrchestrator } from './orchestrator.js'
-import { GitHubClient } from './github/client.js'
 import { loadConfig } from './config.js'
+import { GitHubClient } from './github/client.js'
+import { ReviewOrchestrator } from './orchestrator.js'
+import { createProvider } from './providers/index.js'
 
 async function main(): Promise<void> {
   // --- Validate environment ---
-  const anthropicApiKey = requireEnv('ANTHROPIC_API_KEY')
   const githubToken = requireEnv('GITHUB_TOKEN')
-  const workspace = process.env['GITHUB_WORKSPACE'] ?? process.cwd()
-  const eventPath = process.env['GITHUB_EVENT_PATH']
-  const repository = process.env['GITHUB_REPOSITORY'] ?? ''
-  const eventName = process.env['GITHUB_EVENT_NAME'] ?? ''
+  const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
+  const eventPath = process.env.GITHUB_EVENT_PATH
+  const repository = process.env.GITHUB_REPOSITORY ?? ''
+  const eventName = process.env.GITHUB_EVENT_NAME ?? ''
 
   if (!eventPath) {
-    console.error(
-      'GITHUB_EVENT_PATH is not set. Are you running in GitHub Actions?',
-    )
+    console.error('GITHUB_EVENT_PATH is not set. Are you running in GitHub Actions?')
     process.exit(1)
   }
 
@@ -47,7 +45,15 @@ async function main(): Promise<void> {
 
   // --- Load configuration ---
   const config = loadConfig(workspace)
-  console.log(`Config: model=${config.model}, auto_approve=${config.autoApprove}`)
+  console.log(
+    `Config: provider=${config.provider}, model=${config.model}, language=${config.language}, auto_approve=${config.autoApprove}`,
+  )
+
+  // --- Resolve API key based on provider ---
+  const apiKey =
+    config.provider === 'copilot'
+      ? (process.env.OPENAI_API_KEY ?? process.env.GITHUB_TOKEN ?? githubToken)
+      : requireEnv('ANTHROPIC_API_KEY')
 
   // --- Load review guide and CLAUDE.md ---
   const reviewGuide = loadFileIfExists(workspace, config.reviewGuidePath)
@@ -58,7 +64,8 @@ async function main(): Promise<void> {
 
   // --- Initialize clients ---
   const github = new GitHubClient(githubToken, owner, repo)
-  const orchestrator = new ReviewOrchestrator(anthropicApiKey, config, workspace)
+  const provider = createProvider(config.provider, apiKey)
+  const orchestrator = new ReviewOrchestrator(provider, config, workspace)
 
   // --- Fetch PR info ---
   console.log(`\nFetching PR #${prNumber} from ${owner}/${repo}...`)
@@ -69,9 +76,7 @@ async function main(): Promise<void> {
   console.log(`Labels: ${prInfo.labels.join(', ') || 'none'}`)
 
   // --- Check existing human-review-required label ---
-  const hasHumanReviewLabel = prInfo.labels.includes(
-    config.labels.humanRequired,
-  )
+  const hasHumanReviewLabel = prInfo.labels.includes(config.labels.humanRequired)
 
   // --- Execute review pipeline ---
   console.log('\n--- Starting CodeHarness Review Pipeline ---\n')
@@ -89,7 +94,9 @@ async function main(): Promise<void> {
   if (result.labelsToRemove.length > 0) {
     await github.removeLabels(prNumber, result.labelsToRemove)
   }
-  console.log(`  Labels: +[${result.labelsToAdd.join(', ')}] -[${result.labelsToRemove.join(', ')}]`)
+  console.log(
+    `  Labels: +[${result.labelsToAdd.join(', ')}] -[${result.labelsToRemove.join(', ')}]`,
+  )
 
   // Submit GitHub review
   if (result.decision === 'APPROVE' && !hasHumanReviewLabel) {
@@ -130,20 +137,17 @@ async function main(): Promise<void> {
 
 // --- Helpers ---
 
-function determinePRNumber(
-  event: Record<string, unknown>,
-  eventName: string,
-): number | null {
+function determinePRNumber(event: Record<string, unknown>, eventName: string): number | null {
   if (eventName === 'pull_request' || eventName === 'pull_request_target') {
-    const pr = event['pull_request'] as Record<string, unknown> | undefined
-    return (pr?.['number'] as number) ?? null
+    const pr = event.pull_request as Record<string, unknown> | undefined
+    return (pr?.number as number) ?? null
   }
 
   if (eventName === 'issue_comment') {
-    const issue = event['issue'] as Record<string, unknown> | undefined
+    const issue = event.issue as Record<string, unknown> | undefined
     // Only handle comments on PRs (not issues)
-    if (issue?.['pull_request']) {
-      return (issue['number'] as number) ?? null
+    if (issue?.pull_request) {
+      return (issue.number as number) ?? null
     }
     return null
   }
@@ -151,10 +155,7 @@ function determinePRNumber(
   return null
 }
 
-function loadFileIfExists(
-  workspace: string,
-  relativePath: string,
-): string | null {
+function loadFileIfExists(workspace: string, relativePath: string): string | null {
   const fullPath = resolve(workspace, relativePath)
   if (!existsSync(fullPath)) return null
 
@@ -162,7 +163,7 @@ function loadFileIfExists(
     const content = readFileSync(fullPath, 'utf-8')
     // Truncate very large guide files to avoid overwhelming the prompt
     if (content.length > 10000) {
-      return content.substring(0, 10000) + '\n\n(... truncated for context limits ...)'
+      return `${content.substring(0, 10000)}\n\n(... truncated for context limits ...)`
     }
     return content
   } catch {

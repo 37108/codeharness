@@ -2,8 +2,16 @@
 # Place this file as .ai-review.yml in your repository root.
 # All fields are optional — defaults are shown below.
 
-# Claude model to use for review
+# AI provider: "claude" or "copilot" (GitHub Models / OpenAI)
+provider: claude
+
+# Model to use (provider-specific)
+# Claude: claude-sonnet-4-20250514, claude-opus-4-20250514
+# Copilot: gpt-4o, gpt-4o-mini
 model: claude-sonnet-4-20250514
+
+# Review output language (en, ja, ko, zh, etc.)
+language: en
 
 # Automatically approve PRs when no critical/important issues found
 auto_approve: true
@@ -40,11 +48,22 @@ exclude_patterns:
   - "**/.git/**"
   - "**/*.generated.*"
 
-# Project-specific invariants for the reviewer
-# These are rules that are ALWAYS enforced during review.
+# Review skills to activate
+# Built-in skills: frontend-react, frontend-nextjs, frontend-css,
+#                  backend-node, backend-python, backend-go,
+#                  infrastructure, security
+#
+# Skills are auto-detected from changed file types by default.
+# Explicitly list skills here to force-enable them regardless of file types.
 # Example:
-# custom_invariants:
-#   - "All database queries must use parameterized statements"
-#   - "API endpoints must validate input with Zod schemas"
-#   - "Components must not directly access localStorage"
+#   skills:
+#     - security
+#     - frontend-react
+skills: []
+
+# Project-specific invariants for the reviewer
+# Example:
+#   custom_invariants:
+#     - "All database queries must use parameterized statements"
+#     - "API endpoints must validate input with Zod schemas"
 custom_invariants: []

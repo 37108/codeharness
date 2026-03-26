@@ -35,7 +35,21 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # provider: claude              # or "copilot"
           # model: claude-sonnet-4-20250514
+          # language: en                  # or "ja" for Japanese output
           # auto_approve: 'true'
           # review_guide_path: 'REVIEW_GUIDE.md'
           # max_diff_lines: '3000'
+
+  # Example: Copilot provider configuration
+  # ai-review-copilot:
+  #   ...
+  #   steps:
+  #     - uses: your-org/codeharness@v1
+  #       with:
+  #         openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+  #         github_token: ${{ secrets.GITHUB_TOKEN }}
+  #         provider: copilot
+  #         model: gpt-4o
+  #         language: ja

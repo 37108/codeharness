@@ -1,11 +1,13 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { z } from 'zod'
 import { parse as parseYaml } from 'yaml'
+import { z } from 'zod'
 import type { ReviewConfig } from './types.js'
 
 const ConfigFileSchema = z.object({
+  provider: z.enum(['claude', 'copilot']).optional(),
   model: z.string().optional(),
+  language: z.string().optional(),
   auto_approve: z.boolean().optional(),
   severity_threshold: z.enum(['CRITICAL', 'IMPORTANT', 'LOW']).optional(),
   max_diff_lines: z.number().optional(),
@@ -20,6 +22,7 @@ const ConfigFileSchema = z.object({
     .optional(),
   exclude_patterns: z.array(z.string()).optional(),
   custom_invariants: z.array(z.string()).optional(),
+  skills: z.array(z.string()).optional(),
 })
 
 const DEFAULT_EXCLUDE_PATTERNS = [
@@ -38,7 +41,9 @@ const DEFAULT_EXCLUDE_PATTERNS = [
 
 function getDefaults(): ReviewConfig {
   return {
+    provider: 'claude',
     model: 'claude-sonnet-4-20250514',
+    language: 'en',
     autoApprove: true,
     severityThreshold: 'IMPORTANT',
     maxDiffLines: 3000,
@@ -51,6 +56,7 @@ function getDefaults(): ReviewConfig {
     },
     excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
     customInvariants: [],
+    skills: [],
   }
 }
 
@@ -59,9 +65,7 @@ export function loadConfig(workspace: string): ReviewConfig {
 
   // Try to load config file
   const configPaths = [
-    process.env['INPUT_CONFIG_PATH']
-      ? resolve(workspace, process.env['INPUT_CONFIG_PATH'])
-      : null,
+    process.env.INPUT_CONFIG_PATH ? resolve(workspace, process.env.INPUT_CONFIG_PATH) : null,
     resolve(workspace, '.ai-review.yml'),
     resolve(workspace, '.ai-review.yaml'),
     resolve(workspace, '.github/ai-review.yml'),
@@ -85,29 +89,36 @@ export function loadConfig(workspace: string): ReviewConfig {
   }
 
   // Merge: env overrides > file config > defaults
+  const providerEnv = process.env.INPUT_PROVIDER
+  const provider =
+    providerEnv === 'claude' || providerEnv === 'copilot'
+      ? providerEnv
+      : (fileConfig.provider ?? defaults.provider)
+
   return {
-    model: process.env['INPUT_MODEL'] ?? fileConfig.model ?? defaults.model,
+    provider,
+    model: process.env.INPUT_MODEL ?? fileConfig.model ?? defaults.model,
+    language: process.env.INPUT_LANGUAGE ?? fileConfig.language ?? defaults.language,
     autoApprove:
-      process.env['INPUT_AUTO_APPROVE'] !== undefined
-        ? process.env['INPUT_AUTO_APPROVE'] === 'true'
-        : fileConfig.auto_approve ?? defaults.autoApprove,
-    severityThreshold:
-      fileConfig.severity_threshold ?? defaults.severityThreshold,
-    maxDiffLines: envNumber('INPUT_MAX_DIFF_LINES') ?? fileConfig.max_diff_lines ?? defaults.maxDiffLines,
+      process.env.INPUT_AUTO_APPROVE !== undefined
+        ? process.env.INPUT_AUTO_APPROVE === 'true'
+        : (fileConfig.auto_approve ?? defaults.autoApprove),
+    severityThreshold: fileConfig.severity_threshold ?? defaults.severityThreshold,
+    maxDiffLines:
+      envNumber('INPUT_MAX_DIFF_LINES') ?? fileConfig.max_diff_lines ?? defaults.maxDiffLines,
     maxReviewPasses: fileConfig.max_review_passes ?? defaults.maxReviewPasses,
     reviewGuidePath:
-      process.env['INPUT_REVIEW_GUIDE_PATH'] ??
+      process.env.INPUT_REVIEW_GUIDE_PATH ??
       fileConfig.review_guide_path ??
       defaults.reviewGuidePath,
     labels: {
       approved: fileConfig.labels?.approved ?? defaults.labels.approved,
       reviewed: fileConfig.labels?.reviewed ?? defaults.labels.reviewed,
-      humanRequired:
-        fileConfig.labels?.human_required ?? defaults.labels.humanRequired,
+      humanRequired: fileConfig.labels?.human_required ?? defaults.labels.humanRequired,
     },
-    excludePatterns:
-      fileConfig.exclude_patterns ?? defaults.excludePatterns,
+    excludePatterns: fileConfig.exclude_patterns ?? defaults.excludePatterns,
     customInvariants: fileConfig.custom_invariants ?? defaults.customInvariants,
+    skills: fileConfig.skills ?? defaults.skills,
   }
 }
 

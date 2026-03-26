@@ -48,7 +48,7 @@ export class GitHubClient {
       baseBranch: prData.base.ref,
       headBranch: prData.head.ref,
       labels: prData.labels.map((label) =>
-        typeof label === 'string' ? label : label.name ?? '',
+        typeof label === 'string' ? label : (label.name ?? ''),
       ),
       diff: diffResponse.data as unknown as string,
       changedFiles: filesResponse.data.map((file) => file.filename),
@@ -59,10 +59,7 @@ export class GitHubClient {
    * Create or update the CodeHarness review comment on a PR.
    * Uses a hidden marker to identify previous comments.
    */
-  async upsertReviewComment(
-    prNumber: number,
-    body: string,
-  ): Promise<void> {
+  async upsertReviewComment(prNumber: number, body: string): Promise<void> {
     const markedBody = `${body}\n\n${COMMENT_MARKER}`
 
     // Find existing CodeHarness comment
@@ -112,9 +109,7 @@ export class GitHubClient {
     if (labels.length === 0) return
 
     // Ensure labels exist
-    await Promise.all(
-      labels.map((label) => this.ensureLabelExists(label)),
-    )
+    await Promise.all(labels.map((label) => this.ensureLabelExists(label)))
 
     await this.octokit.issues.addLabels({
       owner: this.owner,
@@ -166,9 +161,7 @@ export class GitHubClient {
       per_page: 100,
     })
 
-    const botComment = comments.data.find((comment) =>
-      comment.body?.includes(COMMENT_MARKER),
-    )
+    const botComment = comments.data.find((comment) => comment.body?.includes(COMMENT_MARKER))
 
     return botComment?.id ?? null
   }
@@ -215,15 +208,17 @@ export class GitHubClient {
         'ai-reviewed': '1d76db',
         'ai-approved': '0e8a16',
       }
-      await this.octokit.issues.createLabel({
-        owner: this.owner,
-        repo: this.repo,
-        name: label,
-        color: colorMap[label] ?? '5319e7',
-        description: `Managed by CodeHarness`,
-      }).catch(() => {
-        // Race condition: label may have been created by another run
-      })
+      await this.octokit.issues
+        .createLabel({
+          owner: this.owner,
+          repo: this.repo,
+          name: label,
+          color: colorMap[label] ?? '5319e7',
+          description: `Managed by CodeHarness`,
+        })
+        .catch(() => {
+          // Race condition: label may have been created by another run
+        })
     }
   }
 }

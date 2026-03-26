@@ -1,6 +1,6 @@
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
-import { join, resolve, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import type { ReviewOutput } from '../types.js'
 import { ReviewOutputSchema } from '../types.js'
 
@@ -29,10 +29,7 @@ export class ToolExecutor {
     return this.submittedReview
   }
 
-  execute(
-    toolName: string,
-    input: Record<string, unknown>,
-  ): string {
+  execute(toolName: string, input: Record<string, unknown>): string {
     switch (toolName) {
       case 'read_file':
         return this.readFile(input)
@@ -48,7 +45,7 @@ export class ToolExecutor {
   }
 
   private readFile(input: Record<string, unknown>): string {
-    const path = input['path'] as string
+    const path = input.path as string
     if (!path) return 'Error: path is required'
 
     const fullPath = this.resolveSafePath(path)
@@ -79,27 +76,25 @@ export class ToolExecutor {
       this.totalBytesRead += stat.size
 
       const lines = content.split('\n')
-      const startLine = (input['start_line'] as number | undefined) ?? 1
-      const endLine = (input['end_line'] as number | undefined) ?? lines.length
+      const startLine = (input.start_line as number | undefined) ?? 1
+      const endLine = (input.end_line as number | undefined) ?? lines.length
 
       const clampedStart = Math.max(1, startLine)
       const clampedEnd = Math.min(lines.length, endLine)
 
       const selectedLines = lines.slice(clampedStart - 1, clampedEnd)
-      return selectedLines
-        .map((line, index) => `${clampedStart + index}\t${line}`)
-        .join('\n')
+      return selectedLines.map((line, index) => `${clampedStart + index}\t${line}`).join('\n')
     } catch (error) {
       return `Error reading file: ${error instanceof Error ? error.message : String(error)}`
     }
   }
 
   private searchContent(input: Record<string, unknown>): string {
-    const pattern = input['pattern'] as string
+    const pattern = input.pattern as string
     if (!pattern) return 'Error: pattern is required'
 
-    const searchPath = (input['path'] as string | undefined) ?? '.'
-    const filePattern = input['file_pattern'] as string | undefined
+    const searchPath = (input.path as string | undefined) ?? '.'
+    const filePattern = input.file_pattern as string | undefined
 
     const fullPath = this.resolveSafePath(searchPath)
     if (!fullPath) return `Error: path "${searchPath}" is outside the repository`
@@ -121,15 +116,13 @@ export class ToolExecutor {
 
       const lines = result.trim().split('\n')
       // Make paths relative to repo root
-      const relativized = lines
-        .slice(0, MAX_SEARCH_RESULTS)
-        .map((line) => {
-          const absPrefix = this.repoRoot + '/'
-          if (line.startsWith(absPrefix)) {
-            return line.substring(absPrefix.length)
-          }
-          return line
-        })
+      const relativized = lines.slice(0, MAX_SEARCH_RESULTS).map((line) => {
+        const absPrefix = `${this.repoRoot}/`
+        if (line.startsWith(absPrefix)) {
+          return line.substring(absPrefix.length)
+        }
+        return line
+      })
 
       return relativized.join('\n') || 'No matches found.'
     } catch (error) {
@@ -146,7 +139,7 @@ export class ToolExecutor {
   }
 
   private listDirectory(input: Record<string, unknown>): string {
-    const path = (input['path'] as string | undefined) ?? '.'
+    const path = (input.path as string | undefined) ?? '.'
 
     const fullPath = this.resolveSafePath(path)
     if (!fullPath) return `Error: path "${path}" is outside the repository`

@@ -1,12 +1,14 @@
-import type Anthropic from '@anthropic-ai/sdk'
+import type { ToolDefinition } from '../providers/types.js'
 import { FindingJsonSchema } from '../zod-to-json-schema.js'
 
 /**
  * Tool definitions for the review phase.
  * These implement progressive disclosure: Claude starts with the diff
  * and uses these tools to explore deeper context as needed.
+ *
+ * Uses the provider-agnostic ToolDefinition type.
  */
-export function getReviewTools(): Anthropic.Tool[] {
+export function getReviewTools(): ToolDefinition[] {
   return [
     {
       name: 'read_file',
@@ -44,7 +46,8 @@ export function getReviewTools(): Anthropic.Tool[] {
           },
           path: {
             type: 'string',
-            description: 'Directory or file to search within (relative to repo root). Defaults to "."',
+            description:
+              'Directory or file to search within (relative to repo root). Defaults to "."',
           },
           file_pattern: {
             type: 'string',

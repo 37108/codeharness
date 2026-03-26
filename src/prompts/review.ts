@@ -1,5 +1,7 @@
-import type { ReviewConfig, PullRequestInfo } from '../types.js'
 import type { DiffSummary } from '../diff.js'
+import { formatSkillsPrompt } from '../skills/loader.js'
+import type { ReviewSkill } from '../skills/types.js'
+import type { PullRequestInfo, ReviewConfig } from '../types.js'
 
 export interface ReviewPromptContext {
   config: ReviewConfig
@@ -9,6 +11,21 @@ export interface ReviewPromptContext {
   diffSummary: DiffSummary
   reviewGuide: string | null
   claudeMd: string | null
+  activeSkills: ReviewSkill[]
+}
+
+/** Language-specific instruction map */
+const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  ja: `## 出力言語
+全てのfinding（title, description, suggestion）および exploration_summary は**日本語**で記述してください。
+ファイルパスやコードはそのままにしてください。`,
+  en: '', // English is the default, no extra instruction needed
+  ko: `## Output Language
+Write all findings (title, description, suggestion) and exploration_summary in **Korean**.
+Keep file paths and code as-is.`,
+  zh: `## Output Language
+Write all findings (title, description, suggestion) and exploration_summary in **Chinese**.
+Keep file paths and code as-is.`,
 }
 
 /**
@@ -18,6 +35,7 @@ export interface ReviewPromptContext {
  * - Progressive Disclosure: provides a "map" (CLAUDE.md/REVIEW_GUIDE.md), not a manual
  * - Invariants over Micromanagement: defines WHAT must be true, not HOW to review
  * - Agent Legibility: structured for Claude's comprehension
+ * - Skills: domain-specific review guidelines injected based on changed files
  */
 export function buildReviewSystemPrompt(context: ReviewPromptContext): string {
   const sections: string[] = []
@@ -75,6 +93,21 @@ Start from the diff and go deeper only when necessary.
 When you have finished your review, call the \`submit_review\` tool with your findings.
 Do NOT output findings as text. Always use the submit_review tool.`)
 
+  // Language instruction
+  const langInstruction =
+    LANGUAGE_INSTRUCTIONS[context.config.language] ??
+    LANGUAGE_INSTRUCTIONS[context.config.language.split('-')[0] ?? 'en'] ??
+    ''
+  if (langInstruction) {
+    sections.push(langInstruction)
+  }
+
+  // Active skills (domain-specific review guidelines)
+  const skillsPrompt = formatSkillsPrompt(context.activeSkills)
+  if (skillsPrompt) {
+    sections.push(skillsPrompt)
+  }
+
   // Custom invariants from config
   if (context.config.customInvariants.length > 0) {
     sections.push(`## Project-Specific Invariants
@@ -126,7 +159,9 @@ ${context.prInfo.body || '(No description provided)'}`)
 ${summary.files.map((file) => `- \`${file.path}\` (+${file.additions} -${file.deletions})`).join('\n')}`)
 
   if (context.diffTruncated) {
-    parts.push(`> **Note**: The diff has been truncated to fit context limits. Use the \`read_file\` tool to inspect files not shown in the diff.`)
+    parts.push(
+      `> **Note**: The diff has been truncated to fit context limits. Use the \`read_file\` tool to inspect files not shown in the diff.`,
+    )
   }
 
   parts.push(`## Diff

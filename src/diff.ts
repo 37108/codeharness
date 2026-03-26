@@ -41,12 +41,12 @@ export function parseDiff(rawDiff: string): ParsedDiffFile[] {
     for (const line of lines) {
       if (line.startsWith('@@')) {
         if (currentHunk) hunks.push(currentHunk)
-        currentHunk = line + '\n'
+        currentHunk = `${line}\n`
         continue
       }
 
       if (currentHunk) {
-        currentHunk += line + '\n'
+        currentHunk += `${line}\n`
         if (line.startsWith('+') && !line.startsWith('+++')) additions++
         if (line.startsWith('-') && !line.startsWith('---')) deletions++
       }
@@ -96,9 +96,7 @@ export function summarizeDiff(files: ParsedDiffFile[]): DiffSummary {
       }))
       .sort(
         (first, second) =>
-          second.additions +
-          second.deletions -
-          (first.additions + first.deletions),
+          second.additions + second.deletions - (first.additions + first.deletions),
       ),
   }
 }
@@ -118,16 +116,10 @@ export function truncateDiff(
 ): { diff: string; truncated: boolean; includedFiles: string[]; summarizedFiles: string[] } {
   // Sort by change size (largest first = highest priority)
   const sorted = [...files].sort(
-    (first, second) =>
-      second.additions +
-      second.deletions -
-      (first.additions + first.deletions),
+    (first, second) => second.additions + second.deletions - (first.additions + first.deletions),
   )
 
-  const totalLines = sorted.reduce(
-    (sum, file) => sum + file.additions + file.deletions,
-    0,
-  )
+  const totalLines = sorted.reduce((sum, file) => sum + file.additions + file.deletions, 0)
 
   // If within limits, return full diff
   if (totalLines <= maxLines) {

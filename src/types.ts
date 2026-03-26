@@ -90,11 +90,7 @@ export type TriageOutput = z.infer<typeof TriageOutputSchema>
 
 // --- Decision ---
 
-export const DecisionSchema = z.enum([
-  'APPROVE',
-  'REQUEST_CHANGES',
-  'REQUEST_HUMAN_REVIEW',
-])
+export const DecisionSchema = z.enum(['APPROVE', 'REQUEST_CHANGES', 'REQUEST_HUMAN_REVIEW'])
 export type Decision = z.infer<typeof DecisionSchema>
 
 // --- PR Information ---
@@ -120,10 +116,16 @@ export interface ReviewResult {
   labelsToRemove: string[]
 }
 
+// --- Provider ---
+
+export type ProviderType = 'claude' | 'copilot'
+
 // --- Config ---
 
 export interface ReviewConfig {
+  provider: ProviderType
   model: string
+  language: string
   autoApprove: boolean
   severityThreshold: Severity
   maxDiffLines: number
@@ -136,4 +138,5 @@ export interface ReviewConfig {
   }
   excludePatterns: string[]
   customInvariants: string[]
+  skills: string[]
 }

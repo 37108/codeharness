@@ -1,16 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
-import type {
-  ReviewConfig,
-  PullRequestInfo,
-  ReviewResult,
-  ReviewOutput,
-  TriageOutput,
-  Decision,
-  Finding,
-} from './types.js'
-import { TriageOutputSchema } from './types.js'
-import { getReviewTools } from './tools/definitions.js'
-import { ToolExecutor } from './tools/executor.js'
+import { filterDiffFiles, parseDiff, summarizeDiff, truncateDiff } from './diff.js'
 import {
   buildReviewSystemPrompt,
   buildReviewUserPrompt,
@@ -21,25 +9,35 @@ import {
   buildTriageUserPrompt,
   type TriagePromptContext,
 } from './prompts/triage.js'
-import {
-  parseDiff,
-  filterDiffFiles,
-  summarizeDiff,
-  truncateDiff,
-} from './diff.js'
+import type {
+  AIProvider,
+  ProviderMessage,
+  ProviderToolCall,
+  ToolDefinition,
+} from './providers/index.js'
+import { resolveSkills } from './skills/loader.js'
+import type { ReviewSkill } from './skills/types.js'
+import { getReviewTools } from './tools/definitions.js'
+import { ToolExecutor } from './tools/executor.js'
+import type {
+  Decision,
+  Finding,
+  PullRequestInfo,
+  ReviewConfig,
+  ReviewOutput,
+  ReviewResult,
+  TriageOutput,
+} from './types.js'
+import { TriageOutputSchema } from './types.js'
 
 const MAX_TOOL_ITERATIONS = 25
 
 export class ReviewOrchestrator {
-  private readonly anthropic: Anthropic
-
   constructor(
-    apiKey: string,
+    private readonly provider: AIProvider,
     private readonly config: ReviewConfig,
     private readonly workspace: string,
-  ) {
-    this.anthropic = new Anthropic({ apiKey })
-  }
+  ) {}
 
   /**
    * Execute the full multi-phase review pipeline.
@@ -51,26 +49,24 @@ export class ReviewOrchestrator {
   ): Promise<ReviewResult> {
     const startTime = Date.now()
 
-    // Phase 0: Bootstrap — parse and prepare diff
+    // Phase 0: Bootstrap — parse diff, resolve skills
     console.log('Phase 0: Bootstrap...')
     const parsedDiff = parseDiff(prInfo.diff)
     const filteredDiff = filterDiffFiles(parsedDiff, this.config.excludePatterns)
     const diffSummary = summarizeDiff(filteredDiff)
-    const { diff, truncated, includedFiles, summarizedFiles } = truncateDiff(
-      filteredDiff,
-      this.config.maxDiffLines,
-    )
+    const { diff, truncated } = truncateDiff(filteredDiff, this.config.maxDiffLines)
 
     console.log(
       `  ${diffSummary.totalFiles} files, +${diffSummary.totalAdditions} -${diffSummary.totalDeletions}`,
     )
-    if (truncated) {
-      console.log(
-        `  Diff truncated: ${includedFiles.length} files included, ${summarizedFiles.length} summarized`,
-      )
+
+    // Resolve skills
+    const activeSkills = resolveSkills(prInfo.changedFiles, this.config.skills, this.workspace)
+    if (activeSkills.length > 0) {
+      console.log(`  Skills: ${activeSkills.map((skill) => skill.name).join(', ')}`)
     }
 
-    // Phase 1: Review — Claude explores code and produces findings
+    // Phase 1: Review — AI explores code and produces findings
     console.log('Phase 1: Review...')
     const promptContext: ReviewPromptContext = {
       config: this.config,
@@ -80,6 +76,7 @@ export class ReviewOrchestrator {
       diffSummary,
       reviewGuide,
       claudeMd,
+      activeSkills,
     }
 
     const reviewOutput = await this.executeReviewPhase(promptContext)
@@ -96,9 +93,7 @@ export class ReviewOrchestrator {
     }
 
     const triageOutput = await this.executeTriagePhase(triageContext)
-    console.log(
-      `  ${triageOutput.findings.length} findings after triage (decision pending)`,
-    )
+    console.log(`  ${triageOutput.findings.length} findings after triage (decision pending)`)
 
     // Phase 3: Decision — deterministic rules
     console.log('Phase 3: Decision...')
@@ -112,6 +107,7 @@ export class ReviewOrchestrator {
       triageOutput.review_comment,
       decision,
       elapsed,
+      activeSkills,
     )
 
     return {
@@ -124,77 +120,54 @@ export class ReviewOrchestrator {
 
   /**
    * Phase 1: Review with tool use loop.
+   * Provider-agnostic — works with Claude and Copilot.
    */
-  private async executeReviewPhase(
-    context: ReviewPromptContext,
-  ): Promise<ReviewOutput> {
+  private async executeReviewPhase(context: ReviewPromptContext): Promise<ReviewOutput> {
     const systemPrompt = buildReviewSystemPrompt(context)
     const userPrompt = buildReviewUserPrompt(context)
-    const tools = getReviewTools()
+    const tools: ToolDefinition[] = getReviewTools()
     const toolExecutor = new ToolExecutor(this.workspace)
 
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: userPrompt },
-    ]
+    const messages: ProviderMessage[] = [{ role: 'user', content: userPrompt }]
 
     let iterations = 0
 
     while (iterations < MAX_TOOL_ITERATIONS) {
       iterations++
 
-      const response = await this.anthropic.messages.create({
-        model: this.config.model,
-        max_tokens: 16384,
-        system: systemPrompt,
+      const response = await this.provider.chat({
+        systemPrompt,
         messages,
         tools,
-      })
+        maxTokens: 16384,
+        model: this.config.model,
+      } as Parameters<AIProvider['chat']>[0] & { model: string })
 
-      // Check if Claude wants to use tools
-      if (response.stop_reason === 'tool_use') {
-        const assistantContent = response.content
-        messages.push({ role: 'assistant', content: assistantContent })
+      if (response.stopReason === 'tool_use' && response.toolCalls.length > 0) {
+        // Add assistant message with tool calls
+        messages.push({
+          role: 'assistant',
+          content: response.textContent,
+          toolCalls: response.toolCalls,
+        })
 
-        const toolResults: Anthropic.ToolResultBlockParam[] = []
+        // Execute tools
+        const toolResults = this.executeToolCalls(response.toolCalls, toolExecutor, iterations)
 
-        for (const block of assistantContent) {
-          if (block.type === 'tool_use') {
-            const inputSummary = JSON.stringify(block.input).substring(0, 120)
-            console.log(`  Tool[${iterations}]: ${block.name}(${inputSummary})`)
+        // Check if submit_review was called
+        const submitted = toolExecutor.getSubmittedReview()
+        if (submitted) return submitted
 
-            const result = toolExecutor.execute(
-              block.name,
-              block.input as Record<string, unknown>,
-            )
-
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: result.substring(0, 50000),
-            })
-
-            // Check if submit_review was called
-            if (block.name === 'submit_review') {
-              const submitted = toolExecutor.getSubmittedReview()
-              if (submitted) {
-                return submitted
-              }
-            }
-          }
-        }
-
-        messages.push({ role: 'user', content: toolResults })
+        messages.push({ role: 'user', toolResults })
         continue
       }
 
-      // Claude finished without calling submit_review — extract from text
+      // End turn — check for submitted review
       const submitted = toolExecutor.getSubmittedReview()
-      if (submitted) {
-        return submitted
-      }
+      if (submitted) return submitted
 
-      // Fallback: try to extract JSON from text response
-      return this.extractReviewFromText(response)
+      // Fallback: extract from text
+      return this.extractReviewFromText(response.textContent)
     }
 
     // Safety: hit max iterations
@@ -209,96 +182,67 @@ export class ReviewOrchestrator {
   }
 
   /**
-   * Phase 2: Triage (single Claude call, no tools needed).
+   * Phase 2: Triage (single AI call, no tools needed).
    */
-  private async executeTriagePhase(
-    context: TriagePromptContext,
-  ): Promise<TriageOutput> {
-    const systemPrompt = buildTriageSystemPrompt()
+  private async executeTriagePhase(context: TriagePromptContext): Promise<TriageOutput> {
+    const systemPrompt = buildTriageSystemPrompt(this.config.language)
     const userPrompt = buildTriageUserPrompt(context)
 
-    const response = await this.anthropic.messages.create({
-      model: this.config.model,
-      max_tokens: 8192,
-      system: systemPrompt,
+    const response = await this.provider.chat({
+      systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
-    })
+      maxTokens: 8192,
+      model: this.config.model,
+    } as Parameters<AIProvider['chat']>[0] & { model: string })
 
-    const textContent = response.content
-      .filter(
-        (block): block is Anthropic.TextBlock => block.type === 'text',
-      )
-      .map((block) => block.text)
-      .join('\n')
-
-    // Try to parse as raw JSON first, then try extracting from code fences
-    const triageOutput = this.parseTriageJson(textContent)
+    const triageOutput = this.parseTriageJson(response.textContent)
     if (triageOutput) return triageOutput
 
-    // Retry once with explicit instruction
+    // Retry once
     console.warn('  Triage output parsing failed, retrying...')
-    const retryResponse = await this.anthropic.messages.create({
-      model: this.config.model,
-      max_tokens: 8192,
-      system: systemPrompt,
+    const retryResponse = await this.provider.chat({
+      systemPrompt,
       messages: [
         { role: 'user', content: userPrompt },
-        { role: 'assistant', content: textContent },
+        { role: 'assistant', content: response.textContent, toolCalls: [] },
         {
           role: 'user',
           content:
             'Your response could not be parsed as valid JSON. Please respond with ONLY the JSON object, no markdown fences, no additional text.',
         },
       ],
-    })
+      maxTokens: 8192,
+      model: this.config.model,
+    } as Parameters<AIProvider['chat']>[0] & { model: string })
 
-    const retryText = retryResponse.content
-      .filter(
-        (block): block is Anthropic.TextBlock => block.type === 'text',
-      )
-      .map((block) => block.text)
-      .join('\n')
-
-    const retryOutput = this.parseTriageJson(retryText)
+    const retryOutput = this.parseTriageJson(retryResponse.textContent)
     if (retryOutput) return retryOutput
 
-    // Final fallback: construct a minimal triage output
     console.warn('  Triage parsing failed after retry, using fallback')
     return this.buildFallbackTriageOutput(context.rawFindings, context.prInfo)
   }
 
   /**
    * Phase 3: Deterministic decision based on triage output.
-   * AI does NOT make the approve/reject decision — rules do.
    */
   private decide(triage: TriageOutput): {
     decision: Decision
     labelsToAdd: string[]
     labelsToRemove: string[]
   } {
-    const hasCritical = triage.findings.some(
-      (finding) => finding.severity === 'CRITICAL',
-    )
-    const hasImportant = triage.findings.some(
-      (finding) => finding.severity === 'IMPORTANT',
-    )
+    const hasCritical = triage.findings.some((finding) => finding.severity === 'CRITICAL')
+    const hasImportant = triage.findings.some((finding) => finding.severity === 'IMPORTANT')
     const hasBreakingChanges = triage.breaking_changes.detected
-    const intentDiverges =
-      triage.intent_analysis.alignment === 'DIVERGES'
+    const intentDiverges = triage.intent_analysis.alignment === 'DIVERGES'
 
-    // REQUEST_HUMAN_REVIEW: breaking changes or critical + intent divergence
     if (hasBreakingChanges || (hasCritical && intentDiverges)) {
       return {
         decision: 'REQUEST_HUMAN_REVIEW',
-        labelsToAdd: [
-          this.config.labels.humanRequired,
-          this.config.labels.reviewed,
-        ],
+        labelsToAdd: [this.config.labels.humanRequired, this.config.labels.reviewed],
         labelsToRemove: [this.config.labels.approved],
       }
     }
 
-    // REQUEST_CHANGES: any critical or important findings
     if (hasCritical || hasImportant) {
       return {
         decision: 'REQUEST_CHANGES',
@@ -307,14 +251,10 @@ export class ReviewOrchestrator {
       }
     }
 
-    // APPROVE: no significant findings
     if (this.config.autoApprove) {
       return {
         decision: 'APPROVE',
-        labelsToAdd: [
-          this.config.labels.approved,
-          this.config.labels.reviewed,
-        ],
+        labelsToAdd: [this.config.labels.approved, this.config.labels.reviewed],
         labelsToRemove: [this.config.labels.humanRequired],
       }
     }
@@ -328,15 +268,25 @@ export class ReviewOrchestrator {
 
   // --- Helper methods ---
 
-  private extractReviewFromText(response: Anthropic.Message): ReviewOutput {
-    const textContent = response.content
-      .filter(
-        (block): block is Anthropic.TextBlock => block.type === 'text',
-      )
-      .map((block) => block.text)
-      .join('\n')
+  private executeToolCalls(
+    toolCalls: ProviderToolCall[],
+    toolExecutor: ToolExecutor,
+    iteration: number,
+  ): { toolCallId: string; content: string }[] {
+    return toolCalls.map((toolCall) => {
+      const inputSummary = JSON.stringify(toolCall.input).substring(0, 120)
+      console.log(`  Tool[${iteration}]: ${toolCall.name}(${inputSummary})`)
 
-    // Try to find JSON in the text
+      const result = toolExecutor.execute(toolCall.name, toolCall.input)
+
+      return {
+        toolCallId: toolCall.id,
+        content: result.substring(0, 50000),
+      }
+    })
+  }
+
+  private extractReviewFromText(textContent: string): ReviewOutput {
     const jsonMatch = textContent.match(/```json\s*([\s\S]*?)\s*```/)
     if (jsonMatch?.[1]) {
       try {
@@ -355,39 +305,35 @@ export class ReviewOrchestrator {
 
     return {
       findings: [],
-      exploration_summary:
-        'Review completed but findings could not be structured. Raw output available in logs.',
+      exploration_summary: 'Review completed but findings could not be structured.',
     }
   }
 
   private parseTriageJson(text: string): TriageOutput | null {
-    // Try raw JSON parse first
+    // Try raw JSON
     try {
-      const parsed = JSON.parse(text)
-      const result = TriageOutputSchema.safeParse(parsed)
+      const result = TriageOutputSchema.safeParse(JSON.parse(text))
       if (result.success) return result.data
     } catch {
       // Not raw JSON
     }
 
-    // Try extracting from code fences
+    // Try code fences
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
     if (jsonMatch?.[1]) {
       try {
-        const parsed = JSON.parse(jsonMatch[1])
-        const result = TriageOutputSchema.safeParse(parsed)
+        const result = TriageOutputSchema.safeParse(JSON.parse(jsonMatch[1]))
         if (result.success) return result.data
       } catch {
         // Fall through
       }
     }
 
-    // Try finding JSON object in text
+    // Try finding JSON object
     const objectMatch = text.match(/\{[\s\S]*\}/)
     if (objectMatch?.[0]) {
       try {
-        const parsed = JSON.parse(objectMatch[0])
-        const result = TriageOutputSchema.safeParse(parsed)
+        const result = TriageOutputSchema.safeParse(JSON.parse(objectMatch[0]))
         if (result.success) return result.data
       } catch {
         // Fall through
@@ -397,10 +343,7 @@ export class ReviewOrchestrator {
     return null
   }
 
-  private buildFallbackTriageOutput(
-    rawFindings: Finding[],
-    prInfo: PullRequestInfo,
-  ): TriageOutput {
+  private buildFallbackTriageOutput(rawFindings: Finding[], prInfo: PullRequestInfo): TriageOutput {
     const findingsText = rawFindings
       .map(
         (finding) =>
@@ -417,8 +360,7 @@ export class ReviewOrchestrator {
         gaps: [],
       },
       breaking_changes: { detected: false, changes: [] },
-      summary:
-        'Triage could not be completed automatically. Raw findings are presented below.',
+      summary: 'Triage could not be completed automatically.',
       review_comment: `## CodeHarness Review
 
 **Decision**: (pending) | **Findings**: ${rawFindings.length}
@@ -435,6 +377,7 @@ ${findingsText || 'No findings.'}
     reviewComment: string,
     decision: Decision,
     elapsed: string,
+    activeSkills: ReviewSkill[],
   ): string {
     const decisionEmoji: Record<Decision, string> = {
       APPROVE: '✅',
@@ -448,17 +391,22 @@ ${findingsText || 'No findings.'}
       REQUEST_HUMAN_REVIEW: 'Human Review Required',
     }
 
-    // Replace placeholder decision text
     let comment = reviewComment.replace(
       /\*\*Decision\*\*: \[will be set by the system\]/,
       `**Decision**: ${decisionEmoji[decision]} ${decisionLabel[decision]}`,
     )
 
-    // Add timing if not present
+    // Add skills and timing metadata
+    const skillNames =
+      activeSkills.length > 0
+        ? ` | Skills: ${activeSkills.map((skill) => skill.name).join(', ')}`
+        : ''
+    const providerLabel = `Provider: ${this.provider.name}`
+
     if (!comment.includes('Review time')) {
       comment = comment.replace(
         /<sub>Reviewed by CodeHarness/,
-        `<sub>Review time: ${elapsed}s | Reviewed by CodeHarness`,
+        `<sub>${providerLabel}${skillNames} | Review time: ${elapsed}s | Reviewed by CodeHarness`,
       )
     }
 
