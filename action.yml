@@ -52,11 +52,6 @@ runs:
       with:
         node-version: '22'
 
-    - name: Install and build
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: npm ci --ignore-scripts && npx tsup
-
     - name: Run CodeHarness Review
       shell: bash
       working-directory: ${{ github.workspace }}
