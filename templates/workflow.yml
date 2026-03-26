@@ -33,22 +33,19 @@ jobs:
       - name: CodeHarness Review
         uses: 37108/codeharness@v1
         with:
-          claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # provider: claude              # or "copilot"
+          # provider: claude
           # model: claude-sonnet-4-20250514
-          # language: en                  # or "ja" for Japanese output
+          # language: en
           # auto_approve: 'true'
-          # review_guide_path: 'REVIEW_GUIDE.md'
-          # max_diff_lines: '3000'
 
-  # Example: Copilot provider configuration
+  # Example: Copilot provider (uses GITHUB_TOKEN, no extra API key needed)
   # ai-review-copilot:
   #   ...
   #   steps:
   #     - uses: 37108/codeharness@v1
   #       with:
-  #         copilot_api_key: ${{ secrets.OPENAI_API_KEY }}
   #         github_token: ${{ secrets.GITHUB_TOKEN }}
   #         provider: copilot
   #         model: gpt-4o

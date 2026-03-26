@@ -50,9 +50,10 @@ async function main(): Promise<void> {
   )
 
   // --- Resolve API key based on provider ---
+  // Copilot provider uses GITHUB_TOKEN to authenticate with GitHub Models API
   const apiKey =
     config.provider === 'copilot'
-      ? (process.env.OPENAI_API_KEY ?? process.env.GITHUB_TOKEN ?? githubToken)
+      ? githubToken
       : requireEnv('ANTHROPIC_API_KEY')
 
   // --- Load review guide and CLAUDE.md ---

@@ -5,14 +5,11 @@ branding:
   color: 'purple'
 
 inputs:
-  claude_api_key:
-    description: 'API key for Claude provider (Anthropic API key)'
-    required: false
-  copilot_api_key:
-    description: 'API key for Copilot provider (OpenAI / GitHub Models API key)'
+  anthropic_api_key:
+    description: 'Anthropic API key (required when provider is "claude")'
     required: false
   github_token:
-    description: 'GitHub token with PR read/write permissions'
+    description: 'GitHub token with PR read/write permissions. Also used as API key for Copilot provider.'
     required: true
     default: ${{ github.token }}
   provider:
@@ -56,8 +53,7 @@ runs:
       shell: bash
       working-directory: ${{ github.workspace }}
       env:
-        ANTHROPIC_API_KEY: ${{ inputs.claude_api_key }}
-        OPENAI_API_KEY: ${{ inputs.copilot_api_key }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PROVIDER: ${{ inputs.provider }}
         INPUT_MODEL: ${{ inputs.model }}

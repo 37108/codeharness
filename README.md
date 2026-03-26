@@ -50,13 +50,13 @@ jobs:
 
       - uses: 37108/codeharness@v1
         with:
-          claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### 2. Add your API key
 
-Go to your repository **Settings → Secrets and variables → Actions** and add your Anthropic API key as a secret (e.g., `CLAUDE_API_KEY`).
+Go to your repository **Settings → Secrets and variables → Actions** and add `ANTHROPIC_API_KEY`.
 
 ### 3. Open a pull request
 
@@ -111,8 +111,7 @@ The AI **never** decides to approve or reject. Instead, deterministic rules are 
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `claude_api_key` | — | API key for Claude provider (Anthropic API key) |
-| `copilot_api_key` | — | API key for Copilot provider (OpenAI / GitHub Models API key) |
+| `anthropic_api_key` | — | Anthropic API key (required for `claude` provider) |
 | `github_token` | `github.token` | GitHub token with PR read/write access |
 | `provider` | `claude` | AI provider: `claude` or `copilot` |
 | `model` | `claude-sonnet-4-20250514` | Model name |
@@ -209,12 +208,12 @@ Custom skills override built-in skills with the same name.
 ```yaml
 - uses: 37108/codeharness@v1
   with:
-    copilot_api_key: ${{ secrets.OPENAI_API_KEY }}
     provider: copilot
     model: gpt-4o
+    # Uses GITHUB_TOKEN automatically — no extra API key needed
 ```
 
-The Copilot provider is compatible with any OpenAI-compatible API (GitHub Models, Azure OpenAI, etc.). Set `OPENAI_BASE_URL` to override the endpoint.
+The Copilot provider uses `GITHUB_TOKEN` to authenticate with GitHub Models API — no extra API key needed when your organization has Copilot enabled. Set `OPENAI_BASE_URL` to override the endpoint.
 
 ## Progressive Disclosure
 
