@@ -1,0 +1,41 @@
+# CodeHarness AI Review Workflow
+# Copy this file to .github/workflows/ai-review.yml in your repository.
+
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ai-review:
+    # Run on PR events, or when /ai-review is commented on a PR
+    if: >
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/ai-review'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: CodeHarness Review
+        uses: your-org/codeharness@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # model: claude-sonnet-4-20250514
+          # auto_approve: 'true'
+          # review_guide_path: 'REVIEW_GUIDE.md'
+          # max_diff_lines: '3000'

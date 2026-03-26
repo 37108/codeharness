@@ -1,0 +1,50 @@
+# CodeHarness Configuration
+# Place this file as .ai-review.yml in your repository root.
+# All fields are optional — defaults are shown below.
+
+# Claude model to use for review
+model: claude-sonnet-4-20250514
+
+# Automatically approve PRs when no critical/important issues found
+auto_approve: true
+
+# Minimum severity to report (CRITICAL, IMPORTANT, LOW)
+severity_threshold: IMPORTANT
+
+# Maximum diff lines before truncation
+max_diff_lines: 3000
+
+# Maximum review passes in convergence loop
+max_review_passes: 3
+
+# Path to the review guide file (progressive disclosure entry point)
+review_guide_path: REVIEW_GUIDE.md
+
+# Label configuration
+labels:
+  approved: ai-approved
+  reviewed: ai-reviewed
+  human_required: human-review-required
+
+# File patterns to exclude from review
+exclude_patterns:
+  - "**/*.lock"
+  - "**/package-lock.json"
+  - "**/pnpm-lock.yaml"
+  - "**/yarn.lock"
+  - "**/*.min.js"
+  - "**/*.min.css"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/node_modules/**"
+  - "**/.git/**"
+  - "**/*.generated.*"
+
+# Project-specific invariants for the reviewer
+# These are rules that are ALWAYS enforced during review.
+# Example:
+# custom_invariants:
+#   - "All database queries must use parameterized statements"
+#   - "API endpoints must validate input with Zod schemas"
+#   - "Components must not directly access localStorage"
+custom_invariants: []
